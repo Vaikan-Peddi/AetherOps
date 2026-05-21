@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     QDRANT_URL: str = "http://qdrant:6333"
     QDRANT_COLLECTION: str = "aetherops_document_chunks"
+    STORAGE_DIR: str = "storage"
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSION: int = 384
     DOCUMENT_CHUNK_SIZE: int = 900

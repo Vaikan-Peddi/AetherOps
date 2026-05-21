@@ -1,10 +1,10 @@
-import { BarChart3, FileText, LayoutDashboard, LogOut, Network, Search } from "lucide-react";
+import { BarChart3, FileText, LayoutDashboard, LogOut, Network, Search, type LucideIcon } from "lucide-react";
 import type React from "react";
 import type { Organization, User } from "../api/client";
 
 export type View = "dashboard" | "documents" | "rag" | "workflows" | "observability";
 
-const navItems: Array<{ id: View; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+const navItems: Array<{ id: View; label: string; icon: LucideIcon }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "rag", label: "RAG Query", icon: Search },

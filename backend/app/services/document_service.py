@@ -1,8 +1,8 @@
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 import fitz
-from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -50,28 +50,44 @@ def extract_pdf_chunks(file_bytes: bytes) -> tuple[list[ExtractedChunk], int]:
         return chunks, pdf.page_count
 
 
-def ingest_pdf(
+def create_queued_document(
     db: Session,
     *,
     organization_id: uuid.UUID,
     user_id: uuid.UUID,
-    upload: UploadFile,
-    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    file_path: str,
 ) -> Document:
-    if upload.content_type not in {"application/pdf", "application/x-pdf"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported")
-
     document = Document(
         organization_id=organization_id,
         uploaded_by_id=user_id,
-        filename=upload.filename or "uploaded.pdf",
-        content_type=upload.content_type or "application/pdf",
+        filename=filename,
+        content_type=content_type,
+        file_path=file_path,
         status=DocumentStatus.PROCESSING,
     )
     db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
+    document = db.get(Document, document_id)
+    if document is None:
+        raise ValueError("Document not found")
+    if not document.file_path:
+        raise ValueError("Document has no stored file path")
+
+    document.status = DocumentStatus.PROCESSING
+    document.error_message = None
+    db.add(document)
+    db.query(DocumentChunk).filter(DocumentChunk.document_id == document.id).delete()
     db.flush()
 
     try:
+        file_bytes = Path(document.file_path).read_bytes()
         extracted_chunks, page_count = extract_pdf_chunks(file_bytes)
         if not extracted_chunks:
             raise ValueError("No extractable text found in PDF")
@@ -113,4 +129,4 @@ def ingest_pdf(
         document.error_message = str(exc)
         db.commit()
         db.refresh(document)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=document.error_message) from exc
+        raise

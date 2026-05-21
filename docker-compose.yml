@@ -39,6 +39,7 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      STORAGE_DIR: ${STORAGE_DIR:-/app/storage}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
     depends_on:
@@ -50,6 +51,8 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - aetherops_storage:/app/storage
     ports:
       - "8000:8000"
 
@@ -62,6 +65,7 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      STORAGE_DIR: ${STORAGE_DIR:-/app/storage}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
     depends_on:
@@ -71,6 +75,8 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - aetherops_storage:/app/storage
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=INFO"]
 
   frontend:
@@ -87,3 +93,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  aetherops_storage:

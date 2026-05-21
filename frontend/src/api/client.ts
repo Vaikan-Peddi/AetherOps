@@ -38,6 +38,12 @@ export type Workflow = {
   }>;
 };
 
+export type WorkflowStepInput = {
+  name: string;
+  action_type: "RAG_QUERY" | "SUMMARIZE_TEXT" | "SEND_WEBHOOK_PLACEHOLDER";
+  config: Record<string, unknown>;
+};
+
 export type WorkflowRun = {
   id: string;
   workflow_id: string;
@@ -47,6 +53,8 @@ export type WorkflowRun = {
   outputs: Record<string, unknown>;
   error_message?: string | null;
   created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
 };
 
 export type Summary = {
@@ -127,14 +135,14 @@ class ApiClient {
     return this.request<Workflow[]>(`/workflows?organization_id=${organizationId}`);
   }
 
-  createWorkflow(organizationId: string, name: string, query: string) {
+  createWorkflow(organizationId: string, name: string, steps: WorkflowStepInput[]) {
     return this.request<Workflow>("/workflows", {
       method: "POST",
       body: JSON.stringify({
         organization_id: organizationId,
         name,
         description: "Phase 1 workflow",
-        steps: [{ name: "Ask documents", action_type: "RAG_QUERY", config: { query } }]
+        steps
       })
     });
   }
@@ -148,6 +156,10 @@ class ApiClient {
 
   getRun(runId: string) {
     return this.request<WorkflowRun>(`/workflows/runs/${runId}`);
+  }
+
+  workflowRuns(organizationId: string) {
+    return this.request<WorkflowRun[]>(`/workflows/runs?organization_id=${organizationId}`);
   }
 
   summary(organizationId: string) {

@@ -8,7 +8,14 @@ from app.core.database import get_db
 from app.models.organization import Role
 from app.models.user import User
 from app.schemas.workflows import WorkflowCreate, WorkflowResponse, WorkflowRunCreate, WorkflowRunResponse
-from app.services.workflow_service import create_workflow, create_workflow_run, get_workflow, get_workflow_run, list_workflows
+from app.services.workflow_service import (
+    create_workflow,
+    create_workflow_run,
+    get_workflow,
+    get_workflow_run,
+    list_workflow_runs,
+    list_workflows,
+)
 from app.workers.tasks import execute_workflow_run
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -46,6 +53,16 @@ def run_workflow(
     run = create_workflow_run(db, workflow=workflow, user_id=current_user.id, inputs=payload.inputs)
     execute_workflow_run.delay(str(run.id))
     return run
+
+
+@router.get("/runs", response_model=list[WorkflowRunResponse])
+def list_runs(
+    organization_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    get_membership(db, current_user.id, organization_id)
+    return list_workflow_runs(db, organization_id=organization_id)
 
 
 @router.get("/runs/{run_id}", response_model=WorkflowRunResponse)

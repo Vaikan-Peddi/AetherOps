@@ -18,15 +18,24 @@ export function DocumentsPage({ organizationId }: { organizationId: string }) {
     load().catch((err) => setMessage(err instanceof Error ? err.message : "Could not load documents"));
   }, [organizationId]);
 
+  useEffect(() => {
+    const hasActiveIngestion = documents.some((document) => ["UPLOADED", "PROCESSING"].includes(document.status));
+    if (!hasActiveIngestion) return;
+    const timer = window.setInterval(() => {
+      load().catch((err) => setMessage(err instanceof Error ? err.message : "Could not refresh documents"));
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [documents, organizationId]);
+
   async function upload(event: React.FormEvent) {
     event.preventDefault();
     if (!file) return;
     setLoading(true);
-    setMessage("Extracting PDF text and writing embeddings to Qdrant...");
+    setMessage("Upload received. Ingestion will continue in the background.");
     try {
       await api.uploadDocument(organizationId, file);
       setFile(null);
-      setMessage("Upload complete");
+      setMessage("Document queued for background ingestion.");
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Upload failed");
@@ -62,7 +71,12 @@ export function DocumentsPage({ organizationId }: { organizationId: string }) {
               {documents.map((document) => (
                 <tr key={document.id}>
                   <td className="py-3 pr-4 font-medium text-slate-950">{document.filename}</td>
-                  <td className="py-3 pr-4">{document.status}</td>
+                  <td className="py-3 pr-4">
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusClass(document.status)}`}>
+                      {document.status}
+                    </span>
+                    {document.error_message ? <p className="mt-1 text-xs text-red-700">{document.error_message}</p> : null}
+                  </td>
                   <td className="py-3 pr-4">{document.page_count}</td>
                   <td className="py-3 pr-4">{document.chunk_count}</td>
                 </tr>
@@ -74,4 +88,10 @@ export function DocumentsPage({ organizationId }: { organizationId: string }) {
       </Panel>
     </div>
   );
+}
+
+function statusClass(status: string) {
+  if (status === "READY") return "bg-emerald-100 text-emerald-800";
+  if (status === "FAILED") return "bg-red-100 text-red-800";
+  return "bg-amber-100 text-amber-800";
 }

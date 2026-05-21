@@ -26,7 +26,7 @@ This is intentionally not a toy demo. Phase 1 focuses on clean architecture and 
 - Register and log in with JWT authentication.
 - Create and access organizations.
 - Enforce organization-level isolation across documents, workflows, queries, and logs.
-- Upload PDF documents.
+- Upload PDF documents and ingest them in the background.
 - Extract text with PyMuPDF.
 - Chunk and embed document text with `sentence-transformers/all-MiniLM-L6-v2`.
 - Store vectors and metadata in Qdrant.
@@ -204,18 +204,20 @@ Phase 1 keeps RBAC intentionally simple but centralized so policy can expand wit
 Upload flow:
 
 1. API receives a PDF through `POST /api/v1/documents/upload`.
-2. Metadata is stored in Postgres.
-3. PyMuPDF extracts page text.
-4. Text is split into overlapping chunks.
-5. sentence-transformers generates normalized embeddings.
-6. Qdrant stores vectors with metadata:
+2. The file is persisted to shared backend/worker storage.
+3. Metadata is stored in Postgres with `PROCESSING` status.
+4. A Celery task performs ingestion in the background.
+5. PyMuPDF extracts page text.
+6. Text is split into overlapping chunks.
+7. sentence-transformers generates normalized embeddings.
+8. Qdrant stores vectors with metadata:
    - `organization_id`
    - `document_id`
    - `filename`
    - `page_number`
    - `chunk_index`
    - `chunk_text`
-7. Document status is updated to `READY`.
+9. Document status is updated to `READY` or `FAILED`.
 
 Query flow:
 
@@ -385,7 +387,7 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
 
 ## Phase 1 Limitations
 
-- PDF ingestion runs synchronously in the upload request.
+- Background ingestion is implemented, but progress reporting is status-based rather than event-based.
 - The frontend does not yet expose full membership management.
 - OpenAI and Anthropic providers are placeholder implementations.
 - RAG prompting is intentionally minimal.

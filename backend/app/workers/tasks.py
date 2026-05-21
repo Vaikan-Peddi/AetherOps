@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import SessionLocal
+from app.services.document_service import ingest_pdf_document
 from app.models.workflow import Workflow, WorkflowActionType, WorkflowRun, WorkflowRunStatus
 from app.services.llm_provider import get_llm_provider
 from app.services.rag_service import query_rag
@@ -39,7 +40,13 @@ async def _run_step(db, run: WorkflowRun, step, previous_output):
     if step.action_type == WorkflowActionType.SUMMARIZE_TEXT:
         text = step.config.get("text") or run.inputs.get("text") or previous_output or ""
         provider = get_llm_provider()
-        summary = await provider.generate(f"Summarize this text for an enterprise operator:\n\n{text}")
+        try:
+            summary = await provider.generate(f"Summarize this text for an enterprise operator:\n\n{text}")
+        except Exception:
+            summary = (
+                "Ollama is not reachable yet. Summary fallback: "
+                + str(text).replace("\n", " ")[:900]
+            )
         return {"summary": summary, "provider": provider.provider_name, "model": provider.model_name}
 
     if step.action_type == WorkflowActionType.SEND_WEBHOOK_PLACEHOLDER:
@@ -95,5 +102,14 @@ def execute_workflow_run(run_id: str) -> None:
             run.error_message = str(exc)
             run.completed_at = datetime.now(timezone.utc)
             db.commit()
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.ingest_document_task")
+def ingest_document_task(document_id: str) -> None:
+    db = SessionLocal()
+    try:
+        ingest_pdf_document(db, document_id=uuid.UUID(document_id))
     finally:
         db.close()

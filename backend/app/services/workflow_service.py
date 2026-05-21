@@ -76,3 +76,14 @@ def get_workflow_run(db: Session, run_id: uuid.UUID) -> WorkflowRun:
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow run not found")
     return run
+
+
+def list_workflow_runs(db: Session, *, organization_id: uuid.UUID, limit: int = 25) -> list[WorkflowRun]:
+    return list(
+        db.scalars(
+            select(WorkflowRun)
+            .where(WorkflowRun.organization_id == organization_id)
+            .order_by(WorkflowRun.created_at.desc())
+            .limit(limit)
+        )
+    )

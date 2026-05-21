@@ -26,6 +26,7 @@ class Document(Base):
     uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus"), default=DocumentStatus.UPLOADED, nullable=False
     )
