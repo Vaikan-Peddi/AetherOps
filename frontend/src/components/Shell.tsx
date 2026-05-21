@@ -1,15 +1,18 @@
-import { BarChart3, FileText, LayoutDashboard, LogOut, Network, Search, type LucideIcon } from "lucide-react";
+import { BarChart3, FileText, LayoutDashboard, LogOut, MessageSquare, Network, Search, Settings, type LucideIcon } from "lucide-react";
 import type React from "react";
 import type { Organization, User } from "../api/client";
 
-export type View = "dashboard" | "documents" | "rag" | "workflows" | "observability";
+export type View = "dashboard" | "chat" | "documents" | "rag" | "workflows" | "observability" | "conversations" | "settings";
 
 const navItems: Array<{ id: View; label: string; icon: LucideIcon }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "chat", label: "AI Chat", icon: MessageSquare },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "rag", label: "RAG Query", icon: Search },
   { id: "workflows", label: "Workflows", icon: Network },
-  { id: "observability", label: "Observability", icon: BarChart3 }
+  { id: "observability", label: "Observability", icon: BarChart3 },
+  { id: "conversations", label: "Conversations", icon: MessageSquare },
+  { id: "settings", label: "Settings", icon: Settings }
 ];
 
 type Props = {
@@ -34,9 +37,9 @@ export function Shell({
   children
 }: Props) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-slate-200 bg-white lg:block">
-        <div className="flex h-20 items-center border-b border-slate-200 px-6">
+    <div className="min-h-screen bg-slate-100">
+      <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-slate-800 bg-slate-950 lg:block">
+        <div className="flex h-20 items-center border-b border-slate-800 px-6">
           <img src="/logo.svg" alt="AetherOps" className="h-12 w-auto" />
         </div>
         <nav className="space-y-1 p-4">
@@ -49,7 +52,7 @@ export function Shell({
                 onClick={() => onViewChange(item.id)}
                 title={item.label}
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
-                  active ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                  active ? "bg-emerald-500 text-slate-950" : "text-slate-300 hover:bg-slate-900 hover:text-white"
                 }`}
               >
                 <Icon size={18} />

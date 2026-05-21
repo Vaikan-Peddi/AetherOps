@@ -18,6 +18,7 @@ class WorkflowCreate(BaseModel):
     name: str
     description: str | None = None
     steps: list[WorkflowStepCreate] = Field(default_factory=list)
+    graph_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowStepResponse(BaseModel):
@@ -35,6 +36,7 @@ class WorkflowResponse(BaseModel):
     organization_id: uuid.UUID
     name: str
     description: str | None = None
+    graph_json: dict[str, Any]
     steps: list[WorkflowStepResponse]
     created_at: datetime
 
@@ -52,6 +54,8 @@ class WorkflowRunResponse(BaseModel):
     status: WorkflowRunStatus
     inputs: dict[str, Any]
     outputs: dict[str, Any]
+    progress_percent: int
+    current_step: str | None = None
     error_message: str | None = None
     created_at: datetime
     started_at: datetime | None = None

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,11 +30,25 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384
     DOCUMENT_CHUNK_SIZE: int = 900
     DOCUMENT_CHUNK_OVERLAP: int = 150
+    RAG_DEFAULT_TOP_K: int = 6
+    RAG_RERANK_TOP_K: int = 5
 
     DEFAULT_LLM_PROVIDER: str = "ollama"
+    ENABLED_LLM_PROVIDERS: str = "ollama"
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
+    OLLAMA_CHAT_MODEL: str = "llama3.1:8b"
+    OLLAMA_RAG_MODEL: str = "llama3.1:8b"
+    OLLAMA_CODING_MODEL: str = "qwen2.5-coder:7b"
+    OLLAMA_REASONING_MODEL: str = "deepseek-r1:8b"
+    OLLAMA_SUMMARIZATION_MODEL: str = "llama3.1:8b"
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-latest"
+    AI_GATEWAY_FALLBACK_PROVIDER: str = "ollama"
     LLM_REQUEST_TIMEOUT_SECONDS: float = 90.0
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 120
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod

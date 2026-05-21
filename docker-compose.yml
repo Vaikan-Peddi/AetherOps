@@ -40,8 +40,14 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       STORAGE_DIR: ${STORAGE_DIR:-/app/storage}
+      ENABLED_LLM_PROVIDERS: ${ENABLED_LLM_PROVIDERS:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1:8b}
+      OLLAMA_RAG_MODEL: ${OLLAMA_RAG_MODEL:-llama3.1:8b}
+      OLLAMA_CODING_MODEL: ${OLLAMA_CODING_MODEL:-qwen2.5-coder:7b}
+      OLLAMA_REASONING_MODEL: ${OLLAMA_REASONING_MODEL:-deepseek-r1:8b}
+      OLLAMA_SUMMARIZATION_MODEL: ${OLLAMA_SUMMARIZATION_MODEL:-llama3.1:8b}
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,10 +57,12 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - aetherops_storage:/app/storage
     ports:
       - "8000:8000"
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+    volumes:
+      - ./backend:/app
+      - aetherops_storage:/app/storage
 
   celery_worker:
     build:
@@ -66,8 +74,14 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       STORAGE_DIR: ${STORAGE_DIR:-/app/storage}
+      ENABLED_LLM_PROVIDERS: ${ENABLED_LLM_PROVIDERS:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1:8b}
+      OLLAMA_RAG_MODEL: ${OLLAMA_RAG_MODEL:-llama3.1:8b}
+      OLLAMA_CODING_MODEL: ${OLLAMA_CODING_MODEL:-qwen2.5-coder:7b}
+      OLLAMA_REASONING_MODEL: ${OLLAMA_REASONING_MODEL:-deepseek-r1:8b}
+      OLLAMA_SUMMARIZATION_MODEL: ${OLLAMA_SUMMARIZATION_MODEL:-llama3.1:8b}
     depends_on:
       backend:
         condition: service_started
@@ -76,6 +90,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      - ./backend:/app
       - aetherops_storage:/app/storage
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=INFO"]
 
@@ -89,6 +104,9 @@ services:
         condition: service_started
     ports:
       - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
 
 volumes:
   postgres_data:

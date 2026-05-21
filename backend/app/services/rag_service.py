@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AIUsageLog
-from app.services.embedding_service import embed_query
-from app.services.llm_provider import get_llm_provider
-from app.services.qdrant_service import qdrant_service
+from app.services.ai_gateway import AITaskType, ai_gateway
+from app.services.rag.citation_builder import append_citation_instruction, build_context_with_citations
+from app.services.rag.reranker import rerank
+from app.services.rag.retrieval import retrieve
 
 
 @dataclass
@@ -36,22 +37,39 @@ async def query_rag(
     query: str,
     limit: int = 5,
     workflow_run_id: uuid.UUID | None = None,
+    conversation_context: str | None = None,
+    metadata_filter: dict | None = None,
 ) -> tuple[str, list[RetrievedSource]]:
     started = time.perf_counter()
-    query_vector = embed_query(query)
-    points = qdrant_service.search(organization_id, query_vector, limit=limit)
-    sources = [_source_from_point(point) for point in points]
-    context = "\n\n".join(f"Source {idx + 1}: {source.chunk_text}" for idx, source in enumerate(sources))
-    provider = get_llm_provider()
-    prompt = (
+    retrieved, retrieval_latency_ms = retrieve(
+        organization_id=organization_id,
+        query=query,
+        top_k=max(limit * 2, limit),
+        metadata_filter=metadata_filter,
+    )
+    reranked = rerank(query, retrieved, top_k=limit)
+    sources = [
+        RetrievedSource(
+            document_id=result.document_id,
+            filename=result.filename,
+            chunk_text=result.chunk_text,
+            score=result.score,
+        )
+        for result in reranked
+    ]
+    context = build_context_with_citations(reranked)
+    memory = f"\n\nRecent conversation:\n{conversation_context}" if conversation_context else ""
+    prompt = append_citation_instruction(
         "You are an enterprise AI assistant. Answer using only the supplied context. "
         "If the context is insufficient, say what is missing.\n\n"
-        f"Question: {query}\n\nContext:\n{context}"
+        f"Question: {query}{memory}\n\nContext:\n{context}"
     )
 
     try:
-        answer = await provider.generate(prompt)
+        answer, route, model_latency_ms = await ai_gateway.generate(prompt, task_type=AITaskType.RAG)
     except Exception:
+        route = ai_gateway.route(AITaskType.RAG)
+        model_latency_ms = 0
         if sources:
             answer = (
                 "Ollama is not reachable yet, but these are the most relevant retrieved passages: "
@@ -69,8 +87,14 @@ async def query_rag(
             endpoint="/api/v1/rag/query",
             latency_ms=latency_ms,
             token_count=len(query.split()) + sum(len(source.chunk_text.split()) for source in sources),
-            model_name=getattr(provider, "model_name", None),
+            model_name=route.model,
             workflow_run_id=workflow_run_id,
+            metadata_json={
+                "provider": route.provider,
+                "task_type": route.task_type.value,
+                "retrieval_latency_ms": retrieval_latency_ms,
+                "model_latency_ms": model_latency_ms,
+            },
         )
     )
     db.commit()

@@ -12,6 +12,8 @@ class DocumentResponse(BaseModel):
     filename: str
     content_type: str
     status: DocumentStatus
+    progress_percent: int
+    current_step: str | None = None
     page_count: int
     chunk_count: int
     error_message: str | None = None

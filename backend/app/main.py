@@ -1,12 +1,16 @@
 import time
+import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.api.v1 import auth, chat, documents, observability, organizations, rag, workflows
+from app.api.v1 import auth, chat, conversations, documents, evaluation, observability, organizations, rag, workflows
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.audit_log import AuditLog
+from app.services.cache_service import cache
+from app.services.observability.metrics import metrics
 from app.services.qdrant_service import qdrant_service
 
 settings = get_settings()
@@ -24,10 +28,25 @@ app.add_middleware(
 
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    client_host = request.client.host if request.client else "unknown"
+    rate_key = f"aetherops:rate:{client_host}:{int(time.time() // 60)}"
+    try:
+        count = cache.client.incr(rate_key)
+        cache.client.expire(rate_key, 65)
+        if count > settings.RATE_LIMIT_REQUESTS_PER_MINUTE:
+            return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": "Rate limit exceeded"})
+    except Exception:
+        pass
+
     started = time.perf_counter()
     response = await call_next(request)
+    response.headers["x-request-id"] = request_id
     if request.url.path.startswith(settings.API_V1_PREFIX):
         latency_ms = int((time.perf_counter() - started) * 1000)
+        metrics.increment("aetherops_http_requests", {"method": request.method, "status": str(response.status_code)})
+        metrics.observe_latency("aetherops_http_request", latency_ms, {"method": request.method})
         db = SessionLocal()
         try:
             db.add(
@@ -37,7 +56,7 @@ async def audit_middleware(request: Request, call_next):
                     action=f"{request.method} {request.url.path}",
                     endpoint=request.url.path,
                     latency_ms=latency_ms,
-                    metadata_json={"status_code": response.status_code},
+                    metadata_json={"status_code": response.status_code, "request_id": request_id},
                 )
             )
             db.commit()
@@ -67,5 +86,7 @@ app.include_router(organizations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
+app.include_router(conversations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
 app.include_router(observability.router, prefix=settings.API_V1_PREFIX)
+app.include_router(evaluation.router, prefix=settings.API_V1_PREFIX)

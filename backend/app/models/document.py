@@ -30,6 +30,8 @@ class Document(Base):
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus"), default=DocumentStatus.UPLOADED, nullable=False
     )
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    current_step: Mapped[str | None] = mapped_column(String(255), nullable=True)
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

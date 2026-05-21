@@ -13,6 +13,7 @@ def create_workflow(db: Session, *, payload: WorkflowCreate, user_id: uuid.UUID)
         organization_id=payload.organization_id,
         name=payload.name,
         description=payload.description,
+        graph_json=payload.graph_json,
         created_by_id=user_id,
     )
     db.add(workflow)

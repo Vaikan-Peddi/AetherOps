@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.services.embedding_service import embed_texts
 from app.services.qdrant_service import qdrant_service
+from app.services.rag.chunking import semanticish_chunks
 
 
 @dataclass
@@ -39,14 +40,8 @@ def extract_pdf_chunks(file_bytes: bytes) -> tuple[list[ExtractedChunk], int]:
     with fitz.open(stream=file_bytes, filetype="pdf") as pdf:
         for page_idx, page in enumerate(pdf, start=1):
             page_text = page.get_text("text")
-            for chunk_text in _chunk_text(
-                page_text,
-                chunk_size=settings.DOCUMENT_CHUNK_SIZE,
-                overlap=settings.DOCUMENT_CHUNK_OVERLAP,
-            ):
-                chunks.append(
-                    ExtractedChunk(text=chunk_text, page_number=page_idx, chunk_index=len(chunks))
-                )
+            for chunk in semanticish_chunks(page_text, page_number=page_idx, starting_index=len(chunks)):
+                chunks.append(ExtractedChunk(text=chunk.text, page_number=chunk.page_number, chunk_index=len(chunks)))
         return chunks, pdf.page_count
 
 
@@ -82,6 +77,8 @@ def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
 
     document.status = DocumentStatus.PROCESSING
     document.error_message = None
+    document.progress_percent = 5
+    document.current_step = "Reading uploaded PDF"
     db.add(document)
     db.query(DocumentChunk).filter(DocumentChunk.document_id == document.id).delete()
     db.flush()
@@ -91,6 +88,9 @@ def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
         extracted_chunks, page_count = extract_pdf_chunks(file_bytes)
         if not extracted_chunks:
             raise ValueError("No extractable text found in PDF")
+        document.progress_percent = 30
+        document.current_step = "Generating embeddings"
+        db.commit()
 
         chunk_payloads = [
             {
@@ -104,6 +104,9 @@ def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
             for chunk in extracted_chunks
         ]
         embeddings = embed_texts([chunk.text for chunk in extracted_chunks])
+        document.progress_percent = 70
+        document.current_step = "Writing vectors to Qdrant"
+        db.commit()
         vector_ids = qdrant_service.upsert_chunks(chunk_payloads, embeddings)
 
         for chunk, vector_id in zip(extracted_chunks, vector_ids, strict=True):
@@ -119,6 +122,8 @@ def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
             )
 
         document.status = DocumentStatus.READY
+        document.progress_percent = 100
+        document.current_step = "Ready"
         document.page_count = page_count
         document.chunk_count = len(extracted_chunks)
         db.commit()
@@ -126,6 +131,8 @@ def ingest_pdf_document(db: Session, *, document_id: uuid.UUID) -> Document:
         return document
     except Exception as exc:
         document.status = DocumentStatus.FAILED
+        document.progress_percent = 100
+        document.current_step = "Failed"
         document.error_message = str(exc)
         db.commit()
         db.refresh(document)

@@ -75,6 +75,9 @@ export function DocumentsPage({ organizationId }: { organizationId: string }) {
                     <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusClass(document.status)}`}>
                       {document.status}
                     </span>
+                    {document.status !== "READY" ? (
+                      <p className="mt-1 text-xs text-slate-500">{document.progress_percent}% {document.current_step}</p>
+                    ) : null}
                     {document.error_message ? <p className="mt-1 text-xs text-red-700">{document.error_message}</p> : null}
                   </td>
                   <td className="py-3 pr-4">{document.page_count}</td>

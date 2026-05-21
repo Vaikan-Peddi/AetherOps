@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, type Organization, type User } from "./api/client";
 import { Shell, type View } from "./components/Shell";
+import { AIChatPage } from "./pages/AIChatPage";
+import { ConversationsPage } from "./pages/ConversationsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ObservabilityPage } from "./pages/ObservabilityPage";
 import { RagQueryPage } from "./pages/RagQueryPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
 export default function App() {
@@ -70,10 +73,13 @@ export default function App() {
     if (!organizationId && view !== "dashboard") {
       return <DashboardPage organizations={organizations} onOrganizationsChanged={(orgs, selectedId) => { setOrganizations(orgs); if (selectedId) setOrganizationId(selectedId); }} />;
     }
+    if (view === "chat") return <AIChatPage organizationId={organizationId} />;
     if (view === "documents") return <DocumentsPage organizationId={organizationId} />;
     if (view === "rag") return <RagQueryPage organizationId={organizationId} />;
     if (view === "workflows") return <WorkflowsPage organizationId={organizationId} />;
     if (view === "observability") return <ObservabilityPage organizationId={organizationId} />;
+    if (view === "conversations") return <ConversationsPage organizationId={organizationId} />;
+    if (view === "settings") return <SettingsPage />;
     return (
       <DashboardPage
         organizations={organizations}

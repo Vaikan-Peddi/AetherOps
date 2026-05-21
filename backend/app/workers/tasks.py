@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import SessionLocal
 from app.services.document_service import ingest_pdf_document
 from app.models.workflow import Workflow, WorkflowActionType, WorkflowRun, WorkflowRunStatus
-from app.services.llm_provider import get_llm_provider
+from app.services.ai_gateway import AITaskType, ai_gateway
 from app.services.rag_service import query_rag
 from app.workers.celery_app import celery_app
 
@@ -37,24 +37,44 @@ async def _run_step(db, run: WorkflowRun, step, previous_output):
             ],
         }
 
-    if step.action_type == WorkflowActionType.SUMMARIZE_TEXT:
+    if step.action_type in {WorkflowActionType.CHAT}:
+        message = step.config.get("message") or run.inputs.get("message") or previous_output or ""
+        response, route, latency_ms = await ai_gateway.generate(str(message), task_type=AITaskType.CHAT)
+        return {"response": response, "provider": route.provider, "model": route.model, "latency_ms": latency_ms}
+
+    if step.action_type in {WorkflowActionType.SUMMARIZE_TEXT, WorkflowActionType.SUMMARIZE}:
         text = step.config.get("text") or run.inputs.get("text") or previous_output or ""
-        provider = get_llm_provider()
         try:
-            summary = await provider.generate(f"Summarize this text for an enterprise operator:\n\n{text}")
+            summary, route, latency_ms = await ai_gateway.generate(
+                f"Summarize this text for an enterprise operator:\n\n{text}",
+                task_type=AITaskType.SUMMARIZATION,
+            )
         except Exception:
+            route = ai_gateway.route(AITaskType.SUMMARIZATION)
+            latency_ms = 0
             summary = (
                 "Ollama is not reachable yet. Summary fallback: "
                 + str(text).replace("\n", " ")[:900]
             )
-        return {"summary": summary, "provider": provider.provider_name, "model": provider.model_name}
+        return {"summary": summary, "provider": route.provider, "model": route.model, "latency_ms": latency_ms}
 
-    if step.action_type == WorkflowActionType.SEND_WEBHOOK_PLACEHOLDER:
+    if step.action_type in {WorkflowActionType.SEND_WEBHOOK_PLACEHOLDER, WorkflowActionType.WEBHOOK}:
         return {
             "webhook_placeholder": True,
             "target_url": step.config.get("url", "not-configured"),
             "payload_preview": previous_output,
         }
+
+    if step.action_type == WorkflowActionType.CONDITION:
+        expected = step.config.get("contains")
+        matched = bool(expected and expected.lower() in str(previous_output).lower())
+        return {"condition_matched": matched, "expected": expected}
+
+    if step.action_type == WorkflowActionType.DELAY:
+        return {"delay_placeholder": True, "seconds": step.config.get("seconds", 0)}
+
+    if step.action_type == WorkflowActionType.HUMAN_APPROVAL:
+        return {"human_approval_placeholder": True, "status": "waiting_not_implemented"}
 
     raise ValueError(f"Unsupported workflow action: {step.action_type}")
 
@@ -74,11 +94,17 @@ def execute_workflow_run(run_id: str) -> None:
 
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = datetime.now(timezone.utc)
+        run.progress_percent = 1
+        run.current_step = "Starting"
         db.commit()
 
         step_outputs = []
         previous_output = None
-        for step in run.workflow.steps:
+        total_steps = max(len(run.workflow.steps), 1)
+        for index, step in enumerate(run.workflow.steps, start=1):
+            run.current_step = step.name
+            run.progress_percent = int(((index - 1) / total_steps) * 100)
+            db.commit()
             output = asyncio.run(_run_step(db, run, step, previous_output))
             step_outputs.append(
                 {
@@ -92,6 +118,8 @@ def execute_workflow_run(run_id: str) -> None:
 
         run.outputs = {"steps": step_outputs}
         run.status = WorkflowRunStatus.COMPLETED
+        run.progress_percent = 100
+        run.current_step = "Completed"
         run.completed_at = datetime.now(timezone.utc)
         db.commit()
     except Exception as exc:
@@ -100,6 +128,8 @@ def execute_workflow_run(run_id: str) -> None:
         if run is not None:
             run.status = WorkflowRunStatus.FAILED
             run.error_message = str(exc)
+            run.progress_percent = 100
+            run.current_step = "Failed"
             run.completed_at = datetime.now(timezone.utc)
             db.commit()
     finally:

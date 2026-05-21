@@ -17,9 +17,9 @@
 
 # AetherOps
 
-AetherOps is a production-grade Phase 1 foundation for Forward Deployed AI work. It provides the core building blocks for an enterprise AI operations platform: tenant-aware authentication, RBAC, document ingestion, vector search, RAG, workflow execution, LLM provider abstraction, and observability.
+AetherOps is a production-grade foundation for Forward Deployed AI work. It provides the core building blocks for an enterprise AI operations platform: tenant-aware authentication, RBAC, document ingestion, vector search, advanced RAG, streaming chat, workflow execution, LLM routing, connector scaffolds, evaluation, and observability.
 
-This is intentionally not a toy demo. Phase 1 focuses on clean architecture and runnable infrastructure so future phases can add connectors, advanced agents, streaming UX, enterprise identity, and production deployment hardening without rewriting the system.
+This is intentionally not a toy demo. Phase 2 adds platform primitives that move AetherOps beyond a basic RAG app while preserving the Phase 1 architecture.
 
 ## What You Can Do Today
 
@@ -31,9 +31,12 @@ This is intentionally not a toy demo. Phase 1 focuses on clean architecture and 
 - Chunk and embed document text with `sentence-transformers/all-MiniLM-L6-v2`.
 - Store vectors and metadata in Qdrant.
 - Ask RAG questions over uploaded documents.
-- Chat with a local Ollama model through a provider abstraction.
-- Create and run simple async workflows.
-- View a tenant-scoped observability summary.
+- Stream chat responses from Ollama through the AI Gateway.
+- Route tasks to `llama3.1:8b`, `qwen2.5-coder:7b`, or `deepseek-r1:8b`.
+- Persist conversations and message memory.
+- Create and run agent-style workflows with a React Flow graph foundation.
+- View tenant-scoped observability and AI usage analytics.
+- Run lightweight RAG evaluation metrics.
 - Run the full stack with Docker Compose.
 
 ## Architecture
@@ -47,7 +50,10 @@ AetherOps
 │   ├── SQLAlchemy 2.0 models
 │   ├── Alembic migrations
 │   ├── service layer
-│   ├── LLM provider abstraction
+│   ├── AI Gateway + LLM provider registry
+│   ├── RAG pipeline modules
+│   ├── connector scaffolds
+│   ├── evaluation services
 │   └── Celery worker
 ├── postgres
 │   └── users, organizations, RBAC, documents, workflows, logs
@@ -59,6 +65,183 @@ AetherOps
     └── local macOS inference via host.docker.internal
 ```
 
+### System Flowchart
+
+```mermaid
+flowchart TB
+  user["Operator / Enterprise User"]
+
+  subgraph frontend["Frontend: React + Vite + TypeScript"]
+    shell["App Shell + Sidebar"]
+    auth_ui["Login / Register"]
+    chat_ui["AI Chat<br/>Streaming Markdown UI"]
+    docs_ui["Documents<br/>Upload + Ingestion Progress"]
+    rag_ui["RAG Query"]
+    workflow_ui["Workflow Builder<br/>React Flow Graph Editor"]
+    obs_ui["Observability Dashboard"]
+    conv_ui["Conversations"]
+    settings_ui["Settings / Routing"]
+  end
+
+  subgraph api["Backend API: FastAPI /api/v1"]
+    auth_api["Auth API<br/>JWT + Current User"]
+    org_api["Organizations API<br/>Tenant + Membership Checks"]
+    chat_api["Chat API<br/>/chat + /chat/stream SSE"]
+    docs_api["Documents API<br/>PDF Validation + Upload"]
+    rag_api["RAG API<br/>Query + Sources"]
+    workflow_api["Workflow API<br/>Definitions + Runs"]
+    conv_api["Conversations API<br/>History + Messages"]
+    eval_api["Evaluation API<br/>Heuristic RAG Eval"]
+    obs_api["Observability API<br/>Summary + Metrics"]
+  end
+
+  subgraph core["Core Backend Foundations"]
+    deps["Dependency Injection<br/>DB Session + Auth Context"]
+    rbac["RBAC<br/>OWNER / ADMIN / MEMBER / VIEWER"]
+    audit["Audit Middleware<br/>Request ID + Latency + AuditLog"]
+    rate_limit["Rate Limiting<br/>Redis-backed per-minute guard"]
+  end
+
+  subgraph ai["AI Systems Layer"]
+    gateway["AI Gateway<br/>Task Routing + Fallback"]
+    registry["LLM Provider Registry"]
+    ollama["Ollama Provider<br/>Local HTTP API"]
+    openai["OpenAI Provider<br/>Scaffold"]
+    anthropic["Anthropic Provider<br/>Scaffold"]
+    routing["Model Routing<br/>CHAT/RAG -> llama3.1<br/>CODING -> qwen2.5-coder<br/>REASONING -> deepseek-r1"]
+  end
+
+  subgraph rag["Advanced RAG Pipeline"]
+    chunking["Chunking<br/>Paragraph-aware overlap"]
+    embeddings["Embedding Service<br/>all-MiniLM-L6-v2"]
+    retrieval["Retrieval<br/>Qdrant search + metadata filter"]
+    reranker["Reranker<br/>Lightweight relevance scoring"]
+    citations["Citation Builder<br/>Inline source references"]
+    rag_service["RAG Service<br/>Prompt assembly + AI Gateway call"]
+  end
+
+  subgraph async["Async Execution"]
+    celery["Celery Worker"]
+    ingest_task["Document Ingestion Task<br/>Extract -> Chunk -> Embed -> Upsert"]
+    workflow_task["Workflow Run Task<br/>Sequential Agent Execution"]
+    retries["Retry / Status Foundation<br/>progress_percent + current_step"]
+  end
+
+  subgraph agents["Agent Workflow Layer"]
+    planner["Planner Agent<br/>Step ordering foundation"]
+    retrieval_agent["Retrieval Agent<br/>RAG tool foundation"]
+    execution_agent["Execution Agent<br/>Connector/tool execution"]
+    node_types["Node Types<br/>RAG_QUERY / SUMMARIZE / CHAT / WEBHOOK<br/>CONDITION / DELAY / HUMAN_APPROVAL"]
+  end
+
+  subgraph connectors["Connector Architecture"]
+    connector_base["Connector Base<br/>OAuth-ready interface"]
+    gmail["Gmail Connector<br/>Scaffold"]
+    slack["Slack Connector<br/>Scaffold"]
+    github["GitHub Connector<br/>Scaffold"]
+  end
+
+  subgraph data["Persistence + Infrastructure"]
+    postgres[("PostgreSQL<br/>Users, Orgs, RBAC, Documents,<br/>Conversations, Workflows, Logs, Eval")]
+    qdrant[("Qdrant<br/>Vector Collection")]
+    redis[("Redis<br/>Celery Broker + Cache + Rate Limit")]
+    storage[("Shared Storage Volume<br/>Uploaded PDFs")]
+    ollama_host["Host Ollama<br/>http://host.docker.internal:11434"]
+  end
+
+  subgraph observability["Observability + Evaluation"]
+    usage["AIUsageLog<br/>tokens, model, provider, latency"]
+    metrics["Prometheus-style Metrics<br/>/observability/metrics"]
+    eval_service["Evaluation Service<br/>faithfulness, relevance,<br/>retrieval precision, hallucination risk"]
+  end
+
+  user --> shell
+  shell --> auth_ui
+  shell --> chat_ui
+  shell --> docs_ui
+  shell --> rag_ui
+  shell --> workflow_ui
+  shell --> obs_ui
+  shell --> conv_ui
+  shell --> settings_ui
+
+  auth_ui --> auth_api
+  chat_ui --> chat_api
+  docs_ui --> docs_api
+  rag_ui --> rag_api
+  workflow_ui --> workflow_api
+  obs_ui --> obs_api
+  conv_ui --> conv_api
+
+  auth_api --> deps
+  org_api --> rbac
+  chat_api --> deps
+  docs_api --> deps
+  rag_api --> deps
+  workflow_api --> deps
+  conv_api --> deps
+  eval_api --> deps
+  obs_api --> deps
+  deps --> rbac
+  audit --> postgres
+  rate_limit --> redis
+
+  auth_api --> postgres
+  org_api --> postgres
+  conv_api --> postgres
+
+  chat_api --> gateway
+  chat_api --> postgres
+  gateway --> routing
+  gateway --> registry
+  registry --> ollama
+  registry --> openai
+  registry --> anthropic
+  ollama --> ollama_host
+
+  docs_api --> storage
+  docs_api --> postgres
+  docs_api --> celery
+  celery --> ingest_task
+  ingest_task --> storage
+  ingest_task --> chunking
+  chunking --> embeddings
+  embeddings --> qdrant
+  ingest_task --> postgres
+
+  rag_api --> rag_service
+  rag_service --> retrieval
+  retrieval --> redis
+  retrieval --> embeddings
+  retrieval --> qdrant
+  retrieval --> reranker
+  reranker --> citations
+  citations --> gateway
+  rag_service --> usage
+
+  workflow_api --> postgres
+  workflow_api --> celery
+  celery --> workflow_task
+  workflow_task --> planner
+  planner --> node_types
+  workflow_task --> retrieval_agent
+  workflow_task --> execution_agent
+  retrieval_agent --> rag_service
+  execution_agent --> connector_base
+  connector_base --> gmail
+  connector_base --> slack
+  connector_base --> github
+  workflow_task --> retries
+  workflow_task --> postgres
+
+  eval_api --> eval_service
+  eval_service --> postgres
+  obs_api --> usage
+  obs_api --> metrics
+  usage --> postgres
+  metrics --> obs_ui
+```
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -67,9 +250,9 @@ AetherOps
 | Database | PostgreSQL, SQLAlchemy 2.0, Alembic |
 | Auth | JWT, passlib, bcrypt |
 | RAG | PyMuPDF, sentence-transformers, Qdrant |
-| LLM | Ollama by default, provider abstraction for OpenAI, Anthropic, Groq, vLLM |
+| LLM | Ollama provider, provider registry, OpenAI/Anthropic scaffolds |
 | Async Workflows | Celery, Redis |
-| Frontend | React, Vite, TypeScript, Tailwind CSS |
+| Frontend | React, Vite, TypeScript, Tailwind CSS, React Flow, React Markdown |
 | Infra | Docker Compose |
 
 ## Repository Structure
@@ -113,6 +296,8 @@ AetherOps expects Ollama to run on the host machine and exposes it to Docker thr
 
 ```bash
 ollama pull llama3.1:8b
+ollama pull qwen2.5-coder:7b
+ollama pull deepseek-r1:8b
 ollama serve
 ```
 
@@ -170,7 +355,98 @@ Important environment variables:
 | `DEFAULT_LLM_PROVIDER` | `ollama` | Active LLM provider |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Host Ollama URL from Docker |
 | `OLLAMA_MODEL` | `llama3.1:8b` | Default local model |
+| `OLLAMA_CODING_MODEL` | `qwen2.5-coder:7b` | Coding task route |
+| `OLLAMA_REASONING_MODEL` | `deepseek-r1:8b` | Reasoning task route |
 | `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` | Frontend API base URL |
+
+## AI Gateway and Model Routing
+
+The AI Gateway sits above provider implementations and routes work by task type:
+
+```text
+CHAT          -> llama3.1:8b
+RAG           -> llama3.1:8b
+CODING        -> qwen2.5-coder:7b
+REASONING     -> deepseek-r1:8b
+SUMMARIZATION -> llama3.1:8b
+```
+
+Provider files live in `backend/app/services/llm/`:
+
+- `base.py`: common interface with `generate`, `stream_generate`, `embeddings`, and `health_check`.
+- `registry.py`: provider registry and dynamic lookup.
+- `ollama_provider.py`: working local provider.
+- `openai_provider.py`: cloud provider scaffold.
+- `anthropic_provider.py`: cloud provider scaffold.
+
+## Streaming Chat and Conversation Memory
+
+AetherOps supports streaming chat through:
+
+- `POST /api/v1/chat/stream`
+- Persistent `Conversation` and `Message` records.
+- Organization-isolated memory.
+- Frontend incremental rendering with markdown support.
+
+## Phase 2 RAG Pipeline
+
+The RAG implementation is split into modular services:
+
+- `chunking.py`: paragraph-aware chunking foundation.
+- `retrieval.py`: Qdrant retrieval with Redis caching and metadata filter hooks.
+- `reranker.py`: lightweight overlap-based reranking.
+- `citation_builder.py`: source citation formatting.
+
+This is ready for hybrid lexical/vector retrieval and stronger rerankers in later phases.
+
+## Agent Workflows and Visual Builder
+
+Workflow support now includes agent-oriented node types:
+
+- `RAG_QUERY`
+- `SUMMARIZE`
+- `CHAT`
+- `WEBHOOK`
+- `CONDITION`
+- `DELAY`
+- `HUMAN_APPROVAL`
+
+The frontend includes a React Flow graph foundation and saves `graph_json` with workflow definitions. The execution engine remains sequential in this phase, with placeholders for branching and approval queues.
+
+## Connectors
+
+Connector scaffolds live in `backend/app/connectors/`:
+
+- Gmail
+- Slack
+- GitHub
+
+They expose an OAuth-ready execution abstraction without implementing provider OAuth yet.
+
+## Evaluation and Observability
+
+Evaluation endpoint:
+
+- `POST /api/v1/evaluation/run`
+
+Initial metrics:
+
+- faithfulness
+- answer relevance
+- retrieval precision
+- retrieval recall placeholder
+- hallucination risk placeholder
+
+Observability now tracks request/model/retrieval latency, token counts, model distribution, provider usage, workflow status, and exposes a Prometheus-compatible foundation at `/api/v1/observability/metrics`.
+
+## Screenshots
+
+Add screenshots here as the UI stabilizes:
+
+- AI Chat
+- Documents and ingestion progress
+- Workflow graph builder
+- Observability dashboard
 
 ## Multi-Tenant Model
 

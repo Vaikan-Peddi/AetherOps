@@ -1,5 +1,7 @@
 import { ArrowDown, ArrowUp, Play, Plus, Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
+import { Background, Controls, ReactFlow, addEdge, useEdgesState, useNodesState, type Connection, type Edge, type Node } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { api, type Workflow, type WorkflowRun, type WorkflowStepInput } from "../api/client";
 import { Panel } from "../components/Panel";
 
@@ -9,27 +11,45 @@ type StepDraft = WorkflowStepInput & {
 
 const actionLabels: Record<StepDraft["action_type"], string> = {
   RAG_QUERY: "RAG query",
+  SUMMARIZE: "Summarize",
   SUMMARIZE_TEXT: "Summarize text",
-  SEND_WEBHOOK_PLACEHOLDER: "Webhook placeholder"
+  CHAT: "Chat",
+  WEBHOOK: "Webhook",
+  SEND_WEBHOOK_PLACEHOLDER: "Webhook placeholder",
+  CONDITION: "Condition",
+  DELAY: "Delay",
+  HUMAN_APPROVAL: "Human approval"
 };
 
 function defaultStep(actionType: StepDraft["action_type"] = "RAG_QUERY"): StepDraft {
   const id = crypto.randomUUID();
-  if (actionType === "SUMMARIZE_TEXT") {
+  if (actionType === "SUMMARIZE" || actionType === "SUMMARIZE_TEXT") {
     return {
       id,
       name: "Summarize retrieved answer",
-      action_type: "SUMMARIZE_TEXT",
+      action_type: "SUMMARIZE",
       config: { text: "" }
     };
   }
-  if (actionType === "SEND_WEBHOOK_PLACEHOLDER") {
+  if (actionType === "WEBHOOK" || actionType === "SEND_WEBHOOK_PLACEHOLDER") {
     return {
       id,
       name: "Notify downstream system",
-      action_type: "SEND_WEBHOOK_PLACEHOLDER",
+      action_type: "WEBHOOK",
       config: { url: "" }
     };
+  }
+  if (actionType === "CHAT") {
+    return { id, name: "Ask model", action_type: "CHAT", config: { message: "" } };
+  }
+  if (actionType === "CONDITION") {
+    return { id, name: "Check condition", action_type: "CONDITION", config: { contains: "" } };
+  }
+  if (actionType === "DELAY") {
+    return { id, name: "Delay", action_type: "DELAY", config: { seconds: "5" } };
+  }
+  if (actionType === "HUMAN_APPROVAL") {
+    return { id, name: "Human approval", action_type: "HUMAN_APPROVAL", config: {} };
   }
   return {
     id,
@@ -44,10 +64,18 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
   const [name, setName] = useState("Book summary workflow");
   const [steps, setSteps] = useState<StepDraft[]>([
     defaultStep("RAG_QUERY"),
-    defaultStep("SUMMARIZE_TEXT")
+    defaultStep("SUMMARIZE")
   ]);
   const [message, setMessage] = useState("");
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const initialNodes: Node[] = steps.map((step, index) => ({
+    id: step.id,
+    position: { x: index * 220, y: 40 },
+    data: { label: `${index + 1}. ${step.name}` },
+    type: "default"
+  }));
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   async function load() {
     if (!organizationId) return;
@@ -77,7 +105,7 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
     setMessage("");
     try {
       const payloadSteps = steps.map(({ id: _id, ...step }) => step);
-      await api.createWorkflow(organizationId, name, payloadSteps);
+      await api.createWorkflow(organizationId, name, payloadSteps, { nodes, edges });
       setMessage("Workflow created");
       await load();
     } catch (err) {
@@ -98,6 +126,9 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
 
   function updateStep(id: string, patch: Partial<StepDraft>) {
     setSteps((current) => current.map((step) => (step.id === id ? { ...step, ...patch } : step)));
+    if (patch.name) {
+      setNodes((current) => current.map((node) => (node.id === id ? { ...node, data: { ...node.data, label: patch.name } } : node)));
+    }
   }
 
   function updateStepConfig(id: string, key: string, value: string) {
@@ -110,6 +141,30 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
 
   function changeActionType(id: string, actionType: StepDraft["action_type"]) {
     setSteps((current) => current.map((step) => (step.id === id ? { ...defaultStep(actionType), id } : step)));
+  }
+
+  function addStep(actionType: StepDraft["action_type"]) {
+    const step = defaultStep(actionType);
+    setSteps((current) => [...current, step]);
+    setNodes((current) => [
+      ...current,
+      {
+        id: step.id,
+        position: { x: current.length * 220, y: 40 },
+        data: { label: step.name },
+        type: "default"
+      }
+    ]);
+  }
+
+  function removeStep(id: string) {
+    setSteps((current) => current.filter((item) => item.id !== id));
+    setNodes((current) => current.filter((node) => node.id !== id));
+    setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
+  }
+
+  function onConnect(connection: Connection) {
+    setEdges((current) => addEdge(connection, current));
   }
 
   function moveStep(index: number, direction: -1 | 1) {
@@ -151,7 +206,7 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
                     <button
                       type="button"
                       title="Remove step"
-                      onClick={() => setSteps((current) => current.filter((item) => item.id !== step.id))}
+                      onClick={() => removeStep(step.id)}
                       className="rounded-md border border-slate-300 p-2 text-red-700 hover:bg-red-50"
                       disabled={steps.length === 1}
                     >
@@ -184,15 +239,15 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setSteps((current) => [...current, defaultStep("RAG_QUERY")])} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
+            <button type="button" onClick={() => addStep("RAG_QUERY")} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
               <Plus size={16} />
               RAG Step
             </button>
-            <button type="button" onClick={() => setSteps((current) => [...current, defaultStep("SUMMARIZE_TEXT")])} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
+            <button type="button" onClick={() => addStep("SUMMARIZE")} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
               <Plus size={16} />
               Summary Step
             </button>
-            <button type="button" onClick={() => setSteps((current) => [...current, defaultStep("SEND_WEBHOOK_PLACEHOLDER")])} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
+            <button type="button" onClick={() => addStep("WEBHOOK")} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100">
               <Plus size={16} />
               Webhook Step
             </button>
@@ -204,6 +259,12 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
           </button>
         </form>
         {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+        <div className="mt-5 h-80 overflow-hidden rounded-lg border border-slate-200">
+          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} fitView>
+            <Background />
+            <Controls />
+          </ReactFlow>
+        </div>
       </Panel>
 
       <Panel title="Workflow Runs">
@@ -240,6 +301,7 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
                   {run.status}
                 </span>
               </div>
+              <p className="mt-2 text-xs text-slate-500">{run.progress_percent}% {run.current_step}</p>
               {run.error_message ? <p className="mt-3 text-sm text-red-700">{run.error_message}</p> : null}
               {Object.keys(run.outputs || {}).length ? (
                 <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-200">
@@ -272,7 +334,17 @@ function StepConfigEditor({
       />
     );
   }
-  if (step.action_type === "SUMMARIZE_TEXT") {
+  if (step.action_type === "CHAT") {
+    return (
+      <textarea
+        className="min-h-24 rounded-md border border-slate-300 p-3 text-sm"
+        value={String(step.config.message ?? "")}
+        onChange={(event) => onChange(step.id, "message", event.target.value)}
+        placeholder="Message to send to the routed chat model. Leave blank to use previous output."
+      />
+    );
+  }
+  if (step.action_type === "SUMMARIZE" || step.action_type === "SUMMARIZE_TEXT") {
     return (
       <textarea
         className="min-h-24 rounded-md border border-slate-300 p-3 text-sm"
@@ -281,6 +353,29 @@ function StepConfigEditor({
         placeholder="Optional text. Leave blank to summarize the previous step output."
       />
     );
+  }
+  if (step.action_type === "CONDITION") {
+    return (
+      <input
+        className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+        value={String(step.config.contains ?? "")}
+        onChange={(event) => onChange(step.id, "contains", event.target.value)}
+        placeholder="Continue marker text"
+      />
+    );
+  }
+  if (step.action_type === "DELAY") {
+    return (
+      <input
+        className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+        value={String(step.config.seconds ?? "")}
+        onChange={(event) => onChange(step.id, "seconds", event.target.value)}
+        placeholder="Delay seconds"
+      />
+    );
+  }
+  if (step.action_type === "HUMAN_APPROVAL") {
+    return <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Placeholder node for future approval queues.</p>;
   }
   return (
     <input

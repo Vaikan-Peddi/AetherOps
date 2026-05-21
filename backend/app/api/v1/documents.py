@@ -30,6 +30,8 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported")
 
     file_bytes = await file.read()
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is not a valid PDF")
     settings = get_settings()
     upload_dir = Path(settings.STORAGE_DIR) / "uploads" / str(organization_id)
     upload_dir.mkdir(parents=True, exist_ok=True)

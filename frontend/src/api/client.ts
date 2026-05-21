@@ -17,6 +17,8 @@ export type DocumentRecord = {
   organization_id: string;
   filename: string;
   status: string;
+  progress_percent: number;
+  current_step?: string | null;
   page_count: number;
   chunk_count: number;
   created_at: string;
@@ -38,9 +40,29 @@ export type Workflow = {
   }>;
 };
 
+export type Conversation = {
+  id: string;
+  organization_id: string;
+  title: string;
+  summary?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  role: "SYSTEM" | "USER" | "ASSISTANT" | "TOOL";
+  content: string;
+  provider?: string | null;
+  model?: string | null;
+  token_count: number;
+  created_at: string;
+};
+
 export type WorkflowStepInput = {
   name: string;
-  action_type: "RAG_QUERY" | "SUMMARIZE_TEXT" | "SEND_WEBHOOK_PLACEHOLDER";
+  action_type: "RAG_QUERY" | "SUMMARIZE" | "SUMMARIZE_TEXT" | "CHAT" | "WEBHOOK" | "SEND_WEBHOOK_PLACEHOLDER" | "CONDITION" | "DELAY" | "HUMAN_APPROVAL";
   config: Record<string, unknown>;
 };
 
@@ -51,6 +73,8 @@ export type WorkflowRun = {
   status: string;
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
+  progress_percent: number;
+  current_step?: string | null;
   error_message?: string | null;
   created_at: string;
   started_at?: string | null;
@@ -62,6 +86,11 @@ export type Summary = {
   total_queries: number;
   total_workflows: number;
   total_workflow_runs: number;
+  avg_latency_ms: number;
+  total_tokens: number;
+  provider_usage: Record<string, number>;
+  model_distribution: Record<string, number>;
+  workflow_status: Record<string, number>;
 };
 
 class ApiClient {
@@ -85,6 +114,38 @@ class ApiClient {
       throw new Error(body.detail || `Request failed with ${response.status}`);
     }
     return response.json();
+  }
+
+  async streamRequest(
+    path: string,
+    payload: unknown,
+    onEvent: (event: { type: string; token?: string; error?: string; provider?: string; model?: string; conversation_id?: string }) => void
+  ) {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok || !response.body) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Stream failed with ${response.status}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+      for (const event of events) {
+        const line = event.split("\n").find((item) => item.startsWith("data: "));
+        if (line) onEvent(JSON.parse(line.slice(6)));
+      }
+    }
   }
 
   register(payload: { email: string; password: string; full_name?: string; organization_name?: string }) {
@@ -131,19 +192,53 @@ class ApiClient {
     );
   }
 
+  streamChat(payload: {
+    organization_id: string;
+    message: string;
+    conversation_id?: string;
+    task_type?: string;
+    provider?: string;
+    model?: string;
+  }, onEvent: Parameters<ApiClient["streamRequest"]>[2]) {
+    return this.streamRequest("/chat/stream", payload, onEvent);
+  }
+
+  conversations(organizationId: string) {
+    return this.request<Conversation[]>(`/conversations?organization_id=${organizationId}`);
+  }
+
+  createConversation(organizationId: string, title = "New conversation") {
+    return this.request<Conversation>("/conversations", {
+      method: "POST",
+      body: JSON.stringify({ organization_id: organizationId, title })
+    });
+  }
+
+  messages(organizationId: string, conversationId: string) {
+    return this.request<ConversationMessage[]>(`/conversations/${conversationId}/messages?organization_id=${organizationId}`);
+  }
+
   workflows(organizationId: string) {
     return this.request<Workflow[]>(`/workflows?organization_id=${organizationId}`);
   }
 
-  createWorkflow(organizationId: string, name: string, steps: WorkflowStepInput[]) {
+  createWorkflow(organizationId: string, name: string, steps: WorkflowStepInput[], graphJson: Record<string, unknown> = {}) {
     return this.request<Workflow>("/workflows", {
       method: "POST",
       body: JSON.stringify({
         organization_id: organizationId,
         name,
         description: "Phase 1 workflow",
-        steps
+        steps,
+        graph_json: graphJson
       })
+    });
+  }
+
+  runEvaluation(payload: { organization_id: string; question: string; answer: string; contexts: string[] }) {
+    return this.request<{ metrics: Record<string, number> }>("/evaluation/run", {
+      method: "POST",
+      body: JSON.stringify(payload)
     });
   }
 
