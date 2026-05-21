@@ -1,0 +1,19 @@
+<svg width="960" height="320" viewBox="0 0 960 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AetherOps logo</title>
+  <desc id="desc">A geometric orbital mark with connected nodes beside the AetherOps wordmark.</desc>
+  <rect width="960" height="320" rx="48" fill="#F8FAFC"/>
+  <g transform="translate(72 48)">
+    <circle cx="112" cy="112" r="96" fill="#0F172A"/>
+    <path d="M58 151C81 96 123 66 184 60" stroke="#38BDF8" stroke-width="15" stroke-linecap="round"/>
+    <path d="M52 76C95 125 143 151 196 155" stroke="#34D399" stroke-width="15" stroke-linecap="round"/>
+    <path d="M74 177L112 50L150 177" stroke="#F8FAFC" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M91 126H133" stroke="#F8FAFC" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="54" cy="75" r="16" fill="#38BDF8" stroke="#F8FAFC" stroke-width="7"/>
+    <circle cx="186" cy="60" r="16" fill="#34D399" stroke="#F8FAFC" stroke-width="7"/>
+    <circle cx="197" cy="155" r="16" fill="#F59E0B" stroke="#F8FAFC" stroke-width="7"/>
+  </g>
+  <g transform="translate(340 99)">
+    <text x="0" y="74" fill="#0F172A" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="78" font-weight="800" letter-spacing="0">AetherOps</text>
+    <text x="5" y="118" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="600" letter-spacing="2">AI OPERATIONS PLATFORM</text>
+  </g>
+</svg>
