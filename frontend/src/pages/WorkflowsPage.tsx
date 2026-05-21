@@ -302,6 +302,7 @@ export function WorkflowsPage({ organizationId }: { organizationId: string }) {
                 </span>
               </div>
               <p className="mt-2 text-xs text-slate-500">{run.progress_percent}% {run.current_step}</p>
+              {run.celery_task_id ? <p className="mt-1 text-xs text-slate-400">Task {run.celery_task_id.slice(0, 8)}</p> : null}
               {run.error_message ? <p className="mt-3 text-sm text-red-700">{run.error_message}</p> : null}
               {Object.keys(run.outputs || {}).length ? (
                 <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-200">

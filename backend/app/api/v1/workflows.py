@@ -13,6 +13,7 @@ from app.services.workflow_service import (
     create_workflow_run,
     get_workflow,
     get_workflow_run,
+    attach_workflow_task_id,
     list_workflow_runs,
     list_workflows,
 )
@@ -51,8 +52,8 @@ def run_workflow(
     workflow = get_workflow(db, workflow_id)
     require_roles(db, current_user.id, workflow.organization_id, [Role.OWNER, Role.ADMIN, Role.MEMBER])
     run = create_workflow_run(db, workflow=workflow, user_id=current_user.id, inputs=payload.inputs)
-    execute_workflow_run.delay(str(run.id))
-    return run
+    task = execute_workflow_run.delay(str(run.id))
+    return attach_workflow_task_id(db, run=run, task_id=task.id)
 
 
 @router.get("/runs", response_model=list[WorkflowRunResponse])

@@ -78,6 +78,7 @@ export function DocumentsPage({ organizationId }: { organizationId: string }) {
                     {document.status !== "READY" ? (
                       <p className="mt-1 text-xs text-slate-500">{document.progress_percent}% {document.current_step}</p>
                     ) : null}
+                    {document.celery_task_id ? <p className="mt-1 text-xs text-slate-400">Task {document.celery_task_id.slice(0, 8)}</p> : null}
                     {document.error_message ? <p className="mt-1 text-xs text-red-700">{document.error_message}</p> : null}
                   </td>
                   <td className="py-3 pr-4">{document.page_count}</td>

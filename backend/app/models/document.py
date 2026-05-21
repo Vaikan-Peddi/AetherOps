@@ -27,6 +27,7 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus"), default=DocumentStatus.UPLOADED, nullable=False
     )

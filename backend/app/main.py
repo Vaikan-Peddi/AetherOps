@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import auth, chat, conversations, documents, evaluation, observability, organizations, rag, workflows
+from app.api.v1 import ai, auth, chat, connectors, conversations, documents, evaluation, observability, organizations, rag, tasks, workflows
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.audit_log import AuditLog
@@ -82,7 +82,9 @@ def health() -> dict[str, str]:
 
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
+app.include_router(ai.router, prefix=settings.API_V1_PREFIX)
 app.include_router(organizations.router, prefix=settings.API_V1_PREFIX)
+app.include_router(connectors.router, prefix=settings.API_V1_PREFIX)
 app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
@@ -90,3 +92,4 @@ app.include_router(conversations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
 app.include_router(observability.router, prefix=settings.API_V1_PREFIX)
 app.include_router(evaluation.router, prefix=settings.API_V1_PREFIX)
+app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)

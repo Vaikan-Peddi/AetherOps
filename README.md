@@ -397,7 +397,7 @@ The RAG implementation is split into modular services:
 - `reranker.py`: lightweight overlap-based reranking.
 - `citation_builder.py`: source citation formatting.
 
-This is ready for hybrid lexical/vector retrieval and stronger rerankers in later phases.
+Retrieval now has a hybrid foundation: Qdrant vector search is combined with tenant-scoped Postgres lexical matching, then merged, deduplicated, reranked, cached, and converted into citations.
 
 ## Agent Workflows and Visual Builder
 
@@ -521,17 +521,21 @@ Provider interface:
 - `stream_generate()`
 - `embeddings()`
 
-OpenAI and Anthropic are intentionally stubbed in Phase 1. The structure is ready for OpenAI, Anthropic, Groq, local vLLM, or internal inference gateways.
+Ollama is fully wired for local inference. OpenAI and Anthropic are provider scaffolds with the same interface, so Groq, local vLLM, or internal inference gateways can be added without changing the API layer.
 
 ## Workflow Automation
 
-Phase 1 workflows run through Celery and support three action types:
+Workflows run through Celery and support agent-oriented action types:
 
 - `RAG_QUERY`
-- `SUMMARIZE_TEXT`
-- `SEND_WEBHOOK_PLACEHOLDER`
+- `SUMMARIZE` / `SUMMARIZE_TEXT`
+- `CHAT`
+- `WEBHOOK` / `SEND_WEBHOOK_PLACEHOLDER`
+- `CONDITION`
+- `DELAY`
+- `HUMAN_APPROVAL`
 
-Workflow APIs create a workflow definition, enqueue a run, and let the worker execute steps in order. This establishes the execution model without overbuilding a visual workflow engine too early.
+Workflow APIs create a workflow definition, enqueue a run, persist the Celery task ID, and let the worker execute steps in order. The current executor includes retry-friendly task configuration, progress fields, delay nodes, basic condition-driven skip behavior, and placeholders for human approval queues.
 
 ## Observability
 
@@ -550,6 +554,11 @@ The summary endpoint reports:
 - total AI queries
 - total workflows
 - total workflow runs
+- average latency
+- token totals
+- provider usage
+- model distribution
+- workflow run status
 
 ## API Overview
 
@@ -583,6 +592,7 @@ The summary endpoint reports:
 | --- | --- | --- |
 | `POST` | `/api/v1/rag/query` | Retrieve document chunks and generate answer |
 | `POST` | `/api/v1/chat` | Direct Ollama-backed chat |
+| `POST` | `/api/v1/chat/stream` | Streaming chat response with SSE-style data frames |
 
 Example RAG request:
 
@@ -618,6 +628,21 @@ Example chat request:
 }
 ```
 
+### Conversations
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/conversations` | Create persistent conversation |
+| `GET` | `/api/v1/conversations?organization_id=...` | List organization conversations |
+| `GET` | `/api/v1/conversations/{conversation_id}/messages?organization_id=...` | Retrieve conversation messages |
+
+### AI Gateway
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/ai/routes` | Inspect configured task-to-model routing |
+| `GET` | `/api/v1/ai/providers/health` | Check enabled provider health |
+
 ### Workflows
 
 | Method | Endpoint | Description |
@@ -625,13 +650,34 @@ Example chat request:
 | `POST` | `/api/v1/workflows` | Create workflow |
 | `GET` | `/api/v1/workflows?organization_id=...` | List workflows |
 | `POST` | `/api/v1/workflows/{id}/run` | Enqueue workflow run |
+| `GET` | `/api/v1/workflows/runs?organization_id=...` | List workflow runs |
 | `GET` | `/api/v1/workflows/runs/{run_id}` | Inspect workflow run |
+
+### Tasks
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/tasks/{task_id}` | Tenant-checked Celery task status for ingestion and workflow runs |
 
 ### Observability
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/api/v1/observability/summary?organization_id=...` | Tenant summary metrics |
+| `GET` | `/api/v1/observability/metrics` | Prometheus-style metrics exposition |
+
+### Evaluation
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/evaluation/run` | Run lightweight RAG quality heuristics |
+
+### Connectors
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/connectors` | List registered connector scaffolds and OAuth scopes |
+| `POST` | `/api/v1/connectors/{connector_name}/execute` | Execute placeholder connector action through the registry |
 
 ## Development
 
@@ -661,24 +707,25 @@ cd backend
 celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
 ```
 
-## Phase 1 Limitations
+## Current Limitations
 
-- Background ingestion is implemented, but progress reporting is status-based rather than event-based.
+- Background ingestion and workflows are durable Celery jobs, but progress updates are polled rather than pushed over WebSockets/SSE.
 - The frontend does not yet expose full membership management.
 - OpenAI and Anthropic providers are placeholder implementations.
-- RAG prompting is intentionally minimal.
+- RAG uses hybrid retrieval and lightweight reranking, but not BM25 indexes, cross-encoder rerankers, or RAGAS yet.
 - Token counting is approximate.
-- Workflow execution is sequential and has basic error handling.
-- No SSO, SCIM, audit export, rate limiting, or production secrets manager yet.
-- No connector runtime has been implemented yet.
+- Workflow execution is sequential with basic branching foundations, not a full DAG scheduler.
+- Rate limiting is local Redis-based and intentionally simple.
+- No SSO, SCIM, audit export, billing, or production secrets manager yet.
+- Connector OAuth and real external API execution are not implemented yet.
 
 ## Roadmap
 
-- Background document ingestion with progress updates.
-- Streaming RAG and chat responses in the frontend.
+- Push-based ingestion and workflow progress updates.
+- Streaming RAG responses with source updates.
 - OpenAI, Anthropic, Groq, and vLLM provider implementations.
 - Connector framework for SharePoint, Google Drive, Slack, Jira, GitHub, Confluence, S3, and databases.
-- Visual workflow builder with retries, schedules, approvals, and branching.
+- Visual workflow builder with full DAG execution, retries, schedules, approvals, and branching.
 - Agent orchestration with tool permissions and run traces.
 - Fine-grained policy engine for RBAC and data access.
 - SSO/SAML/OIDC, invitations, SCIM provisioning.

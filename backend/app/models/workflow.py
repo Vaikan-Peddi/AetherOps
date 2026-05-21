@@ -78,6 +78,7 @@ class WorkflowRun(Base):
     )
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     triggered_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     status: Mapped[WorkflowRunStatus] = mapped_column(
         Enum(WorkflowRunStatus, name="workflowrunstatus"), default=WorkflowRunStatus.QUEUED, nullable=False
     )

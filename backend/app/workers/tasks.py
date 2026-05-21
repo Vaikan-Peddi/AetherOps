@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 
 import uuid
@@ -71,7 +72,10 @@ async def _run_step(db, run: WorkflowRun, step, previous_output):
         return {"condition_matched": matched, "expected": expected}
 
     if step.action_type == WorkflowActionType.DELAY:
-        return {"delay_placeholder": True, "seconds": step.config.get("seconds", 0)}
+        seconds = min(float(step.config.get("seconds", 0) or 0), 60.0)
+        if seconds > 0:
+            time.sleep(seconds)
+        return {"delayed": True, "seconds": seconds}
 
     if step.action_type == WorkflowActionType.HUMAN_APPROVAL:
         return {"human_approval_placeholder": True, "status": "waiting_not_implemented"}
@@ -101,7 +105,19 @@ def execute_workflow_run(run_id: str) -> None:
         step_outputs = []
         previous_output = None
         total_steps = max(len(run.workflow.steps), 1)
+        skip_next = False
         for index, step in enumerate(run.workflow.steps, start=1):
+            if skip_next:
+                step_outputs.append(
+                    {
+                        "step_id": str(step.id),
+                        "name": step.name,
+                        "action_type": step.action_type.value,
+                        "output": {"skipped": True, "reason": "Previous condition was not met"},
+                    }
+                )
+                skip_next = False
+                continue
             run.current_step = step.name
             run.progress_percent = int(((index - 1) / total_steps) * 100)
             db.commit()
@@ -115,6 +131,8 @@ def execute_workflow_run(run_id: str) -> None:
                 }
             )
             previous_output = output.get("answer") or output.get("summary") or output
+            if step.action_type == WorkflowActionType.CONDITION:
+                skip_next = bool(step.config.get("skip_next_on_false", True)) and not output.get("condition_matched", False)
 
         run.outputs = {"steps": step_outputs}
         run.status = WorkflowRunStatus.COMPLETED
@@ -136,7 +154,11 @@ def execute_workflow_run(run_id: str) -> None:
         db.close()
 
 
-@celery_app.task(name="app.workers.tasks.ingest_document_task")
+@celery_app.task(
+    name="app.workers.tasks.ingest_document_task",
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 2, "countdown": 10},
+)
 def ingest_document_task(document_id: str) -> None:
     db = SessionLocal()
     try:

@@ -72,6 +72,13 @@ def create_workflow_run(
     return run
 
 
+def attach_workflow_task_id(db: Session, *, run: WorkflowRun, task_id: str) -> WorkflowRun:
+    run.celery_task_id = task_id
+    db.commit()
+    db.refresh(run)
+    return run
+
+
 def get_workflow_run(db: Session, run_id: uuid.UUID) -> WorkflowRun:
     run = db.get(WorkflowRun, run_id)
     if run is None:

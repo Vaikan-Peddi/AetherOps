@@ -17,6 +17,7 @@ export type DocumentRecord = {
   organization_id: string;
   filename: string;
   status: string;
+  celery_task_id?: string | null;
   progress_percent: number;
   current_step?: string | null;
   page_count: number;
@@ -70,6 +71,7 @@ export type WorkflowRun = {
   id: string;
   workflow_id: string;
   organization_id: string;
+  celery_task_id?: string | null;
   status: string;
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
@@ -91,6 +93,19 @@ export type Summary = {
   provider_usage: Record<string, number>;
   model_distribution: Record<string, number>;
   workflow_status: Record<string, number>;
+};
+
+export type ProviderHealth = {
+  ok: boolean;
+  provider: string;
+  model: string;
+  latency_ms?: number | null;
+  error?: string | null;
+};
+
+export type ConnectorInfo = {
+  name: string;
+  oauth_scopes: string[];
 };
 
 class ApiClient {
@@ -240,6 +255,22 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(payload)
     });
+  }
+
+  aiRoutes() {
+    return this.request<Record<string, { provider: string; model: string }>>("/ai/routes");
+  }
+
+  providerHealth() {
+    return this.request<{ providers: ProviderHealth[]; enabled: string[] }>("/ai/providers/health");
+  }
+
+  connectors() {
+    return this.request<{ connectors: ConnectorInfo[] }>("/connectors");
+  }
+
+  taskStatus(taskId: string) {
+    return this.request<{ task_id: string; state: string; ready: boolean; successful: boolean; failed: boolean }>(`/tasks/${taskId}`);
   }
 
   runWorkflow(workflowId: string, inputs: Record<string, unknown>) {

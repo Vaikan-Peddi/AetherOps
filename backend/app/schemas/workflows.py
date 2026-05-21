@@ -51,6 +51,7 @@ class WorkflowRunResponse(BaseModel):
     id: uuid.UUID
     workflow_id: uuid.UUID
     organization_id: uuid.UUID
+    celery_task_id: str | None = None
     status: WorkflowRunStatus
     inputs: dict[str, Any]
     outputs: dict[str, Any]

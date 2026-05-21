@@ -47,7 +47,10 @@ async def upload_document(
         content_type=file.content_type or "application/pdf",
         file_path=str(stored_path),
     )
-    ingest_document_task.delay(str(document.id))
+    task = ingest_document_task.delay(str(document.id))
+    document.celery_task_id = task.id
+    db.commit()
+    db.refresh(document)
     return document
 
 

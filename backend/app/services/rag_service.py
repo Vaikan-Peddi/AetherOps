@@ -46,6 +46,8 @@ async def query_rag(
         query=query,
         top_k=max(limit * 2, limit),
         metadata_filter=metadata_filter,
+        db=db,
+        hybrid=True,
     )
     reranked = rerank(query, retrieved, top_k=limit)
     sources = [

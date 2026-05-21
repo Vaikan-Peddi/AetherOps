@@ -12,6 +12,7 @@ class DocumentResponse(BaseModel):
     filename: str
     content_type: str
     status: DocumentStatus
+    celery_task_id: str | None = None
     progress_percent: int
     current_step: str | None = None
     page_count: int
